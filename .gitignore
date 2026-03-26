@@ -1,0 +1,40 @@
+# IDE / Editor
+.idea/
+.cursor/
+.vscode/
+*.iml
+
+# Claude Code internal
+.claude/
+.antigavity/
+
+# BMAD
+_bmad/
+_bmad-output/
+
+# Maven build output (root)
+target/
+
+# Spring Boot build output
+trustme-shop/target/
+
+# Node / Vite
+client-web/node_modules/
+client-web/dist/
+client-web/.vite/
+
+# Env / secrets
+*.env
+.env
+.env.local
+.env.*.local
+application-local.properties
+application-secret.properties
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
