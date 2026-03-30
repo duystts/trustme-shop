@@ -40,7 +40,7 @@ import {
   Notification,
   DiscountItem,
 } from "../services/adminApi";
-import { getPagedProducts, ProductPage, Product } from "../services/productApi";
+import { getPagedProducts, ProductPage, Product, ProductOption, ProductVariant, getProductOptions, createProductOption, updateProductOption, deleteProductOption, getProductVariants, generateProductVariants, updateProductVariant } from "../services/productApi";
 import { clearToken, isLoggedIn, isAdmin } from "../services/authApi";
 
 type AdminTab = "dashboard" | "orders" | "products" | "categories" | "users" | "notifications" | "discounts";
@@ -327,6 +327,20 @@ const ProductsTab: React.FC = () => {
   const [uploadingImg, setUploadingImg] = useState(false);
   const [deletingImg, setDeletingImg] = useState<number | null>(null);
 
+  // Options state
+  const [options, setOptions] = useState<ProductOption[]>([]);
+  const [optionForm, setOptionForm] = useState<{ name: string; valuesText: string }>({ name: "", valuesText: "" });
+  const [editingOption, setEditingOption] = useState<ProductOption | null>(null);
+  const [savingOption, setSavingOption] = useState(false);
+
+  // Pending options (for new product before first save)
+  const [pendingOptions, setPendingOptions] = useState<Array<{ tempId: number; name: string; values: string[] }>>([]);
+
+  // Variants state
+  const [variants, setVariants] = useState<ProductVariant[]>([]);
+  const [generatingVariants, setGeneratingVariants] = useState(false);
+  const [savingVariantId, setSavingVariantId] = useState<number | null>(null);
+
   // Import CSV state
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
@@ -346,10 +360,23 @@ const ProductsTab: React.FC = () => {
     getProductImages(productId).then(setImages).catch(() => setImages([]));
   };
 
+  const loadOptions = (productId: number) => {
+    getProductOptions(productId).then(setOptions).catch(() => setOptions([]));
+  };
+
+  const loadVariants = (productId: number) => {
+    getProductVariants(productId).then(setVariants).catch(() => setVariants([]));
+  };
+
   const openAdd = () => {
     setEditing(null);
     setSavedProductId(null);
     setImages([]);
+    setOptions([]);
+    setVariants([]);
+    setPendingOptions([]);
+    setOptionForm({ name: "", valuesText: "" });
+    setEditingOption(null);
     setForm(emptyProductForm());
     setShowModal(true);
   };
@@ -366,10 +393,14 @@ const ProductsTab: React.FC = () => {
       selectedFiles: [],
     });
     loadImages(p.id);
+    loadOptions(p.id);
+    loadVariants(p.id);
+    setOptionForm({ name: "", valuesText: "" });
+    setEditingOption(null);
     setShowModal(true);
   };
 
-  const closeModal = () => { setShowModal(false); setEditing(null); setSavedProductId(null); setImages([]); };
+  const closeModal = () => { setShowModal(false); setEditing(null); setSavedProductId(null); setImages([]); setOptions([]); setVariants([]); setPendingOptions([]); setOptionForm({ name: "", valuesText: "" }); setEditingOption(null); };
 
   const toggleCategory = (id: number) => {
     setForm((f) => ({
@@ -407,8 +438,17 @@ const ProductsTab: React.FC = () => {
         } else {
           created = await createProduct(payload);
         }
+        // Create any pending options that were added before product save
+        if (pendingOptions.length > 0) {
+          await Promise.all(
+            pendingOptions.map((po) => createProductOption(created.id, { name: po.name, values: po.values }))
+          );
+          setPendingOptions([]);
+        }
         setSavedProductId(created.id);
         loadImages(created.id);
+        loadOptions(created.id);
+        loadVariants(created.id);
         loadProducts();
       }
     } finally {
@@ -437,6 +477,74 @@ const ProductsTab: React.FC = () => {
     } finally {
       setDeletingImg(null);
     }
+  };
+
+  const handleSaveOption = async () => {
+    if (!optionForm.name.trim() || !optionForm.valuesText.trim()) return;
+    const values = optionForm.valuesText.split(",").map((v) => v.trim()).filter(Boolean);
+    if (values.length === 0) return;
+
+    if (!savedProductId) {
+      // Pending mode — product not yet created
+      const nameLC = optionForm.name.trim().toLowerCase();
+      if (editingOption) {
+        setPendingOptions((prev) =>
+          prev.map((p) => p.tempId === editingOption.id ? { ...p, name: optionForm.name.trim(), values } : p)
+        );
+      } else {
+        if (pendingOptions.find((p) => p.name.toLowerCase() === nameLC)) {
+          alert(`Đã tồn tại lựa chọn tên "${optionForm.name.trim()}". Vui lòng dùng tên khác.`); return;
+        }
+        setPendingOptions((prev) => [...prev, { tempId: Date.now(), name: optionForm.name.trim(), values }]);
+      }
+      setOptionForm({ name: "", valuesText: "" });
+      setEditingOption(null);
+      return;
+    }
+
+    // API mode — product already saved
+    const duplicate = options.find(
+      (o) => o.name.toLowerCase() === optionForm.name.trim().toLowerCase() && o.id !== editingOption?.id
+    );
+    if (duplicate) { alert(`Đã tồn tại lựa chọn tên "${duplicate.name}". Vui lòng dùng tên khác.`); return; }
+    setSavingOption(true);
+    try {
+      if (editingOption) {
+        await updateProductOption(savedProductId, editingOption.id, { name: optionForm.name, values });
+      } else {
+        await createProductOption(savedProductId, { name: optionForm.name, values });
+      }
+      setOptionForm({ name: "", valuesText: "" });
+      setEditingOption(null);
+      loadOptions(savedProductId);
+    } catch { alert("Lỗi khi lưu lựa chọn"); }
+    setSavingOption(false);
+  };
+
+  const handleGenerateVariants = async () => {
+    if (!savedProductId) return;
+    setGeneratingVariants(true);
+    try {
+      const generated = await generateProductVariants(savedProductId);
+      setVariants(generated);
+    } catch (e: any) {
+      alert(e?.response?.data?.message || "Lỗi khi tạo biến thể");
+    }
+    setGeneratingVariants(false);
+  };
+
+  const handleVariantQtyChange = async (variantId: number, qty: number) => {
+    if (!savedProductId) return;
+    setSavingVariantId(variantId);
+    await updateProductVariant(savedProductId, variantId, qty).catch(() => {});
+    setSavingVariantId(null);
+  };
+
+  const handleDeleteOption = async (optId: number, isPending?: boolean) => {
+    if (isPending) { setPendingOptions((prev) => prev.filter((p) => p.tempId !== optId)); return; }
+    if (!savedProductId) return;
+    await deleteProductOption(savedProductId, optId).catch(() => {});
+    loadOptions(savedProductId);
   };
 
   const handleImportCsv = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -778,6 +886,124 @@ const ProductsTab: React.FC = () => {
                   {uploadingImg ? "Đang tải…" : "+ Thêm ảnh"}
                   <input type="file" accept="image/*" style={{ display: "none" }} onChange={handleImageUpload} disabled={uploadingImg} />
                 </label>
+              </div>
+            )}
+
+            {/* Options (size, color…) — always visible */}
+            {(() => {
+              // Unified option list: real (API) options when product saved, pending ones when adding new
+              const displayOptions = savedProductId
+                ? options
+                : pendingOptions.map((po) => ({
+                    id: po.tempId,
+                    name: po.name,
+                    values: po.values.map((v, i) => ({ id: i, value: v })),
+                  }));
+              const isPendingMode = !savedProductId;
+              return (
+                <div className="admin-field">
+                  <label>Lựa chọn sản phẩm (Size, Màu sắc…)</label>
+
+                  {displayOptions.length > 0 && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: "var(--space-sm)" }}>
+                      {displayOptions.map((opt) => (
+                        <div key={opt.id} style={{ padding: "8px 10px", background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-sm)" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                            <strong style={{ fontSize: "var(--font-sm)" }}>{opt.name}</strong>
+                            <div style={{ display: "flex", gap: 4 }}>
+                              <button type="button" className="ghost-button" style={{ fontSize: "var(--font-xs)", padding: "2px 8px" }}
+                                onClick={() => { setEditingOption(opt); setOptionForm({ name: opt.name, valuesText: opt.values.map((v) => v.value).join(", ") }); }}>Sửa</button>
+                              <button type="button" className="ghost-button text-danger" style={{ fontSize: "var(--font-xs)", padding: "2px 8px" }}
+                                onClick={() => handleDeleteOption(opt.id, isPendingMode)}>Xóa</button>
+                            </div>
+                          </div>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                            {opt.values.map((v) => (
+                              <span key={v.id} style={{ fontSize: "var(--font-xs)", padding: "2px 8px", background: "var(--surface-2)", borderRadius: "var(--radius-sm)", border: "1px solid var(--border-subtle)" }}>{v.value}</span>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <datalist id="option-name-suggestions">
+                    <option value="Size" />
+                    <option value="Màu sắc" />
+                    <option value="Chất liệu" />
+                    <option value="Kiểu dáng" />
+                    <option value="Phong cách" />
+                  </datalist>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr auto", gap: 6, alignItems: "end", marginBottom: 6 }}>
+                    <div>
+                      <div style={{ fontSize: "var(--font-xs)", color: "var(--text-muted)", marginBottom: 3 }}>Tên (vd: Size)</div>
+                      <input
+                        className="admin-input"
+                        list="option-name-suggestions"
+                        value={optionForm.name}
+                        onChange={(e) => setOptionForm((f) => ({ ...f, name: e.target.value }))}
+                        placeholder="Màu sắc"
+                        style={{ fontSize: "var(--font-sm)" }}
+                      />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: "var(--font-xs)", color: "var(--text-muted)", marginBottom: 3 }}>Giá trị (phân tách bởi dấu phẩy)</div>
+                      <input className="admin-input" value={optionForm.valuesText} onChange={(e) => setOptionForm((f) => ({ ...f, valuesText: e.target.value }))} placeholder="S, M, L, XL" style={{ fontSize: "var(--font-sm)" }} />
+                    </div>
+                    <div style={{ display: "flex", gap: 4 }}>
+                      <button type="button" className="primary-button" style={{ fontSize: "var(--font-xs)", whiteSpace: "nowrap" }} disabled={savingOption || !optionForm.name.trim() || !optionForm.valuesText.trim()} onClick={handleSaveOption}>
+                        {savingOption ? "…" : editingOption ? "Cập nhật" : "+ Thêm"}
+                      </button>
+                      {editingOption && (
+                        <button type="button" className="ghost-button" style={{ fontSize: "var(--font-xs)" }} onClick={() => { setEditingOption(null); setOptionForm({ name: "", valuesText: "" }); }}>Hủy</button>
+                      )}
+                    </div>
+                  </div>
+                  {isPendingMode && displayOptions.length > 0 && (
+                    <p style={{ fontSize: "var(--font-xs)", color: "var(--text-muted)", margin: "4px 0 0" }}>
+                      💡 Options sẽ được lưu cùng khi nhấn "Tạo sản phẩm"
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* Variants (stock per combination) — only after product saved */}
+            {savedProductId && options.length > 0 && (
+              <div className="admin-field">
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--space-sm)" }}>
+                  <label style={{ margin: 0 }}>Số lượng theo biến thể</label>
+                  <button type="button" className="ghost-button" style={{ fontSize: "var(--font-xs)" }} disabled={generatingVariants} onClick={handleGenerateVariants}>
+                    {generatingVariants ? "Đang tạo…" : "🔄 Tạo biến thể từ options"}
+                  </button>
+                </div>
+                {variants.length > 0 ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {variants.map((v) => {
+                      const combo = (() => { try { return JSON.parse(v.combination) as Record<string,string>; } catch { return {}; } })();
+                      const label = Object.entries(combo).map(([k, val]) => `${k}: ${val}`).join(" / ");
+                      return (
+                        <div key={v.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 10px", background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-sm)" }}>
+                          <span style={{ fontSize: "var(--font-sm)" }}>{label}</span>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <input
+                              type="number" min={0}
+                              defaultValue={v.stockQuantity}
+                              style={{ width: 70, padding: "3px 6px", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-sm)", fontSize: "var(--font-sm)" }}
+                              onBlur={(e) => handleVariantQtyChange(v.id, +e.target.value)}
+                            />
+                            {savingVariantId === v.id && <span style={{ fontSize: "var(--font-xs)", color: "var(--text-muted)" }}>…</span>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p style={{ fontSize: "var(--font-xs)", color: "var(--text-muted)", margin: 0 }}>
+                    Nhấn "Tạo biến thể từ options" để tự động tạo tất cả tổ hợp.
+                  </p>
+                )}
               </div>
             )}
 
