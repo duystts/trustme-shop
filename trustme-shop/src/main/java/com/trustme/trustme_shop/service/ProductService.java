@@ -1,12 +1,18 @@
 package com.trustme.trustme_shop.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.trustme.trustme_shop.dto.ImportResult;
 import com.trustme.trustme_shop.dto.ProductRequest;
 import com.trustme.trustme_shop.entity.Category;
 import com.trustme.trustme_shop.entity.Product;
+import com.trustme.trustme_shop.entity.ProductOption;
+import com.trustme.trustme_shop.entity.ProductOptionValue;
+import com.trustme.trustme_shop.entity.ProductVariant;
 import com.trustme.trustme_shop.exception.ResourceNotFoundException;
 import com.trustme.trustme_shop.repository.CategoryRepository;
+import com.trustme.trustme_shop.repository.ProductOptionRepository;
 import com.trustme.trustme_shop.repository.ProductRepository;
+import com.trustme.trustme_shop.repository.ProductVariantRepository;
 import lombok.RequiredArgsConstructor;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -22,7 +28,9 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -32,6 +40,9 @@ public class ProductService {
     private final ProductRepository productRepository;
     private final CategoryService categoryService;
     private final CategoryRepository categoryRepository;
+    private final ProductOptionRepository productOptionRepository;
+    private final ProductVariantRepository productVariantRepository;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public Page<Product> getAllProducts(Pageable pageable) {
         return productRepository.findAll(pageable);
@@ -292,13 +303,62 @@ public class ProductService {
                         if (categoryError) continue;
                     }
 
-                    productRepository.save(Product.builder()
+                    String optionNamesStr = getCellString(row, 5);   // e.g. "Size;Màu sắc"
+                    String optionValuesStr = getCellString(row, 6);  // e.g. "S;M;L|Đỏ;Xanh"
+
+                    Product saved = productRepository.save(Product.builder()
                             .name(name)
                             .description(description.isEmpty() ? null : description)
                             .price(price)
                             .stockQuantity(stock)
                             .categories(categories)
                             .build());
+
+                    // Parse & create options/variants if provided
+                    if (!optionNamesStr.isEmpty()) {
+                        String[] optNames = optionNamesStr.split(";");
+                        String[] optValueGroups = optionValuesStr.split("\\|", -1);
+
+                        List<ProductOption> createdOptions = new ArrayList<>();
+                        for (int i = 0; i < optNames.length; i++) {
+                            String optName = optNames[i].trim();
+                            if (optName.isEmpty()) continue;
+
+                            String valuesRaw = (i < optValueGroups.length) ? optValueGroups[i] : "";
+                            List<ProductOptionValue> vals = new ArrayList<>();
+                            ProductOption opt = ProductOption.builder()
+                                    .name(optName).product(saved).values(vals).build();
+                            for (String v : valuesRaw.split(";")) {
+                                String vTrimmed = v.trim();
+                                if (!vTrimmed.isEmpty())
+                                    vals.add(ProductOptionValue.builder().value(vTrimmed).option(opt).build());
+                            }
+                            createdOptions.add(productOptionRepository.save(opt));
+                        }
+
+                        // Auto-generate all variant combinations (Cartesian product)
+                        List<Map<String, String>> combos = new ArrayList<>();
+                        combos.add(new LinkedHashMap<>());
+                        for (ProductOption opt : createdOptions) {
+                            List<Map<String, String>> next = new ArrayList<>();
+                            for (Map<String, String> existing : combos) {
+                                for (ProductOptionValue val : opt.getValues()) {
+                                    Map<String, String> combo = new LinkedHashMap<>(existing);
+                                    combo.put(opt.getName(), val.getValue());
+                                    next.add(combo);
+                                }
+                            }
+                            combos = next;
+                        }
+                        for (Map<String, String> combo : combos) {
+                            productVariantRepository.save(ProductVariant.builder()
+                                    .product(saved)
+                                    .combination(objectMapper.writeValueAsString(combo))
+                                    .stockQuantity(0)
+                                    .build());
+                        }
+                    }
+
                     success++;
 
                 } catch (Exception e) {
@@ -314,29 +374,38 @@ public class ProductService {
 
     public byte[] generateExcelTemplate() {
         try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            // ---- Sheet 1: Products data ----
             Sheet sheet = workbook.createSheet("Products");
 
-            // Header row with bold style
             CellStyle headerStyle = workbook.createCellStyle();
-            Font font = workbook.createFont();
-            font.setBold(true);
-            headerStyle.setFont(font);
+            Font boldFont = workbook.createFont();
+            boldFont.setBold(true);
+            headerStyle.setFont(boldFont);
             headerStyle.setFillForegroundColor(IndexedColors.LIGHT_CORNFLOWER_BLUE.getIndex());
             headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
 
+            CellStyle optionHeaderStyle = workbook.createCellStyle();
+            Font optFont = workbook.createFont();
+            optFont.setBold(true);
+            optionHeaderStyle.setFont(optFont);
+            optionHeaderStyle.setFillForegroundColor(IndexedColors.LIGHT_GREEN.getIndex());
+            optionHeaderStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+
+            String[] cols = {"name", "description", "price", "stockQuantity", "categoryNames",
+                             "optionNames", "optionValues"};
             Row header = sheet.createRow(0);
-            String[] cols = {"name", "description", "price", "stockQuantity", "categoryNames"};
             for (int i = 0; i < cols.length; i++) {
                 Cell cell = header.createCell(i);
                 cell.setCellValue(cols[i]);
-                cell.setCellStyle(headerStyle);
-                sheet.setColumnWidth(i, 5000);
+                cell.setCellStyle(i < 5 ? headerStyle : optionHeaderStyle);
+                sheet.setColumnWidth(i, i >= 5 ? 7000 : 5000);
             }
 
-            // Sample rows
+            // Sample rows (col 5 = optionNames, col 6 = optionValues pipe-separated groups)
             Object[][] samples = {
-                {"Áo thun nam", "Chất liệu cotton thoáng mát", 299000, 100, "Men"},
-                {"Quần jean nữ", "Slim fit co giãn", 599000, 50, "Women;New Arrivals"},
+                {"Áo thun nam",    "Chất liệu cotton thoáng mát", 299000, 100, "Men",                "Size;Màu sắc", "S;M;L;XL|Trắng;Đen;Xanh"},
+                {"Quần jean nữ",   "Slim fit co giãn",             599000, 50,  "Women;New Arrivals", "Size",         "25;26;27;28;29"},
+                {"Váy maxi hoa",   "Chất liệu lụa mát",            450000, 80,  "Women",              "",             ""},
             };
             for (int r = 0; r < samples.length; r++) {
                 Row row = sheet.createRow(r + 1);
@@ -347,6 +416,35 @@ public class ProductService {
                     } else {
                         cell.setCellValue(String.valueOf(samples[r][c]));
                     }
+                }
+            }
+
+            // ---- Sheet 2: Hướng dẫn ----
+            Sheet guide = workbook.createSheet("Hướng dẫn");
+            CellStyle titleStyle = workbook.createCellStyle();
+            Font titleFont = workbook.createFont();
+            titleFont.setBold(true);
+            titleFont.setFontHeightInPoints((short) 12);
+            titleStyle.setFont(titleFont);
+
+            String[][] guideRows = {
+                {"Cột", "Tên cột", "Bắt buộc", "Mô tả / Ví dụ"},
+                {"A", "name",          "✓", "Tên sản phẩm"},
+                {"B", "description",   "",  "Mô tả sản phẩm"},
+                {"C", "price",         "✓", "Giá (VD: 299000)"},
+                {"D", "stockQuantity", "",  "Tồn kho mặc định (VD: 100)"},
+                {"E", "categoryNames", "",  "Tên danh mục, nhiều danh mục cách nhau dấu ; (VD: Men;New Arrivals)"},
+                {"F", "optionNames",   "",  "Tên các tùy chọn, cách nhau dấu ; (VD: Size;Màu sắc)"},
+                {"G", "optionValues",  "",  "Giá trị mỗi tùy chọn: nhóm cách nhau | , giá trị trong nhóm cách ; (VD: S;M;L|Đỏ;Xanh)"},
+                {"", "", "", "Hệ thống sẽ tự sinh tất cả biến thể (variants) từ tổ hợp các tùy chọn."},
+            };
+            for (int r = 0; r < guideRows.length; r++) {
+                Row row = guide.createRow(r);
+                for (int c = 0; c < guideRows[r].length; c++) {
+                    Cell cell = row.createCell(c);
+                    cell.setCellValue(guideRows[r][c]);
+                    if (r == 0) cell.setCellStyle(titleStyle);
+                    guide.setColumnWidth(c, c == 3 ? 18000 : 5000);
                 }
             }
 

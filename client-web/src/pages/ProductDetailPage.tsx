@@ -4,8 +4,11 @@ import {
   getProductById,
   getRelatedProducts,
   Product,
+  ProductOption,
+  ProductOptionValue,
+  ProductVariant,
 } from "../services/productApi";
-import { addToCart } from "../services/orderApi";
+import { addToCart, createOrder } from "../services/orderApi";
 import { isLoggedIn, isAdmin } from "../services/authApi";
 import { ProductCard } from "../shared/ProductCard";
 import {
@@ -45,9 +48,13 @@ export const ProductDetailPage: React.FC = () => {
   const [related, setRelated] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
   const [addedToCart, setAddedToCart] = useState(false);
+  const [buyingNow, setBuyingNow] = useState(false);
   const [needLogin, setNeedLogin] = useState(false);
   const [activeImg, setActiveImg] = useState(0);
   const navigate = useNavigate();
+
+  // Selected options (optionId -> value)
+  const [selectedOptions, setSelectedOptions] = useState<Record<number, string>>({});
 
   // Reviews
   const [reviews, setReviews] = useState<Review[]>([]);
@@ -97,13 +104,32 @@ export const ProductDetailPage: React.FC = () => {
 
   const handleAddToCart = async () => {
     if (!isLoggedIn()) {
-      navigate("/auth/login");
+      setNeedLogin(true);
       return;
     }
+    setNeedLogin(false);
     if (!product) return;
     await addToCart({ product: { id: product.id }, quantity: 1 });
     setAddedToCart(true);
     setTimeout(() => setAddedToCart(false), 2500);
+  };
+
+  const handleBuyNow = async () => {
+    if (!isLoggedIn()) {
+      setNeedLogin(true);
+      return;
+    }
+    setNeedLogin(false);
+    if (!product) return;
+    setBuyingNow(true);
+    try {
+      await addToCart({ product: { id: product.id }, quantity: 1 });
+      navigate("/checkout");
+    } catch {
+      alert("Không thể thêm vào giỏ. Vui lòng thử lại.");
+    } finally {
+      setBuyingNow(false);
+    }
   };
 
   const handleSubmitReview = async () => {
@@ -231,23 +257,185 @@ export const ProductDetailPage: React.FC = () => {
             <p className="product-description">{product.description}</p>
           )}
 
+          {/* Product Options (size, color, etc.) */}
+          {product.options && product.options.length > 0 && (() => {
+            // Find matched variant from selected options
+            const allSelected = product.options!.every((o: ProductOption) => selectedOptions[o.id]);
+            const matchedVariant: ProductVariant | undefined = allSelected && product.variants
+              ? product.variants.find((v: ProductVariant) => {
+                  try {
+                    const combo = JSON.parse(v.combination) as Record<string, string>;
+                    return product.options!.every((o: ProductOption) => combo[o.name] === selectedOptions[o.id]);
+                  } catch { return false; }
+                })
+              : undefined;
+
+            return (
+              <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-md)" }}>
+                {product.options!.map((opt: ProductOption) => (
+                  <div key={opt.id}>
+                    <p style={{ margin: "0 0 6px", fontWeight: 600, fontSize: "var(--font-sm)" }}>{opt.name}:</p>
+                    <div style={{ display: "flex", gap: "var(--space-xs)", flexWrap: "wrap" }}>
+                      {opt.values.map((v: ProductOptionValue) => {
+                        const isSelected = selectedOptions[opt.id] === v.value;
+                        return (
+                          <button
+                            key={v.id}
+                            type="button"
+                            onClick={() => setSelectedOptions((prev) => ({ ...prev, [opt.id]: v.value }))}
+                            style={{
+                              padding: "5px 14px",
+                              border: isSelected ? "2px solid var(--accent)" : "1px solid var(--border-subtle)",
+                              borderRadius: "var(--radius-sm)",
+                              background: isSelected ? "var(--accent)" : "transparent",
+                              color: isSelected ? "#fff" : "inherit",
+                              cursor: "pointer",
+                              fontSize: "var(--font-sm)",
+                              fontWeight: isSelected ? 600 : 400,
+                              transition: "all 0.15s",
+                            }}
+                          >
+                            {v.value}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+
+                {/* Show variant stock when all options selected */}
+                {allSelected && (
+                  <p style={{ margin: 0, fontSize: "var(--font-sm)" }}>
+                    {matchedVariant
+                      ? matchedVariant.stockQuantity > 0
+                        ? <span style={{ color: "#16a34a" }}>✓ Còn {matchedVariant.stockQuantity} sản phẩm</span>
+                        : <span style={{ color: "#dc2626" }}>✗ Hết hàng</span>
+                      : <span style={{ color: "var(--text-muted)" }}>Không có biến thể này</span>
+                    }
+                  </p>
+                )}
+              </div>
+            );
+          })()}
+
           {/* CTA */}
-          <div className="pdp-actions">
-            <button
-              id="obj-pdp-add-cart"
-              className="primary-button pdp-action-btn"
-              onClick={handleAddToCart}
-              disabled={product.stockQuantity === 0}
-            >
-              {addedToCart ? "✓ Đã thêm vào giỏ!" : "🛒 Thêm vào giỏ hàng"}
-            </button>
-            <button
-              className="ghost-button pdp-action-btn"
-              title="Yêu thích"
-            >
-              ♡
-            </button>
-          </div>
+          {(() => {
+            const hasOptions = product.options && product.options.length > 0;
+            const allSelected = hasOptions && product.options!.every((o: ProductOption) => selectedOptions[o.id]);
+            const matchedVariant: ProductVariant | undefined = allSelected && product.variants
+              ? product.variants.find((v: ProductVariant) => {
+                  try {
+                    const combo = JSON.parse(v.combination) as Record<string, string>;
+                    return product.options!.every((o: ProductOption) => combo[o.name] === selectedOptions[o.id]);
+                  } catch { return false; }
+                })
+              : undefined;
+            const outOfStock = hasOptions
+              ? !allSelected || !matchedVariant || matchedVariant.stockQuantity === 0
+              : product.stockQuantity === 0;
+
+            return (
+              <>
+                <div className="pdp-actions">
+                  <button
+                    id="obj-pdp-add-cart"
+                    className="primary-button pdp-action-btn"
+                    onClick={handleAddToCart}
+                    disabled={outOfStock}
+                  >
+                    {addedToCart ? (
+                      <span style={{ display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                        Đã thêm vào giỏ!
+                      </span>
+                    ) : (
+                      <span style={{ display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+                          <path d="M4 10h16l-1.2 11H5.2z" />
+                        </svg>
+                        Thêm vào giỏ hàng
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    className="ghost-button pdp-action-btn"
+                    onClick={handleBuyNow}
+                    disabled={outOfStock || buyingNow}
+                  >
+                    {buyingNow ? (
+                      <span style={{ display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ animation: "spin 1s linear infinite" }}>
+                          <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                        </svg>
+                        Đang xử lý…
+                      </span>
+                    ) : (
+                      <span style={{ display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M13 2 4.5 13.5H10L9 22l10.5-12H14z" />
+                        </svg>
+                        Mua ngay
+                      </span>
+                    )}
+                  </button>
+                </div>
+
+                {needLogin && (
+                  <div style={{
+                    marginTop: "var(--space-sm)",
+                    padding: "14px 16px",
+                    background: "linear-gradient(135deg, #eff6ff 0%, #f0fdf4 100%)",
+                    border: "1.5px solid #93c5fd",
+                    borderRadius: "var(--radius-md)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    animation: "fadeIn 0.2s ease",
+                  }}>
+                    <span style={{ color: "var(--accent)", flexShrink: 0 }}>
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="5" y="11" width="14" height="10" rx="2.5" />
+                        <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+                        <circle cx="12" cy="16.5" r="1.2" fill="currentColor" stroke="none" />
+                      </svg>
+                    </span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: "var(--font-sm)", color: "var(--text-primary)", marginBottom: 2 }}>
+                        Bạn chưa đăng nhập
+                      </div>
+                      <div style={{ fontSize: "var(--font-xs)", color: "var(--text-muted)" }}>
+                        Đăng nhập để thêm vào giỏ hoặc mua ngay nhé!
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                      <button
+                        className="primary-button"
+                        style={{ fontSize: "var(--font-xs)", padding: "6px 14px" }}
+                        onClick={() => navigate("/auth/login")}
+                      >
+                        Đăng nhập
+                      </button>
+                      <button
+                        className="ghost-button"
+                        style={{ fontSize: "var(--font-xs)", padding: "6px 14px" }}
+                        onClick={() => navigate("/auth/register")}
+                      >
+                        Đăng ký
+                      </button>
+                    </div>
+                    <button
+                      onClick={() => setNeedLogin(false)}
+                      style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 16, lineHeight: 1, padding: 2 }}
+                      aria-label="Đóng"
+                    >×</button>
+                  </div>
+                )}
+              </>
+            );
+          })()}
         </div>
       </div>
 

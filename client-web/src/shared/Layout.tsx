@@ -4,6 +4,23 @@ import { AiChatWidget } from "./AiChatWidget";
 import { clearToken, TOKEN_KEY, AUTH_EVENT, isAdmin } from "../services/authApi";
 import { getNotifications, PublicNotification } from "../services/orderApi";
 
+const THEME_KEY = "trustme_theme";
+
+function useTheme() {
+  const [dark, setDark] = useState(() => {
+    const saved = localStorage.getItem(THEME_KEY);
+    if (saved) return saved === "dark";
+    return window.matchMedia("(prefers-color-scheme: dark)").matches;
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+    localStorage.setItem(THEME_KEY, dark ? "dark" : "light");
+  }, [dark]);
+
+  return { dark, toggle: () => setDark((d) => !d) };
+}
+
 /**
  * Reads auth state reactively: listens to localStorage events
  * so the header updates immediately after login/logout.
@@ -39,6 +56,7 @@ type Props = { children: React.ReactNode };
 export const Layout: React.FC<Props> = ({ children }) => {
   const navigate = useNavigate();
   const { loggedIn, admin, setLoggedIn } = useAuth();
+  const { dark, toggle: toggleTheme } = useTheme();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
 
   // Notification state
@@ -83,6 +101,56 @@ export const Layout: React.FC<Props> = ({ children }) => {
         </nav>
 
         <div className="header-actions" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          {/* Theme Toggle */}
+          <button
+            onClick={toggleTheme}
+            title={dark ? "Chuyển sang sáng" : "Chuyển sang tối"}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: '0.4rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'var(--text-muted)',
+              borderRadius: '50%',
+              transition: 'background 0.2s, color 0.2s',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'var(--accent-soft)';
+              e.currentTarget.style.color = 'var(--accent)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'none';
+              e.currentTarget.style.color = 'var(--text-muted)';
+            }}
+          >
+            {dark ? (
+              /* Geometric sun: center circle + 8 tick marks */
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+                <circle cx="10" cy="10" r="3.5" />
+                <line x1="10" y1="1.5" x2="10" y2="3.2" />
+                <line x1="10" y1="16.8" x2="10" y2="18.5" />
+                <line x1="1.5" y1="10" x2="3.2" y2="10" />
+                <line x1="16.8" y1="10" x2="18.5" y2="10" />
+                <line x1="4.1" y1="4.1" x2="5.3" y2="5.3" />
+                <line x1="14.7" y1="14.7" x2="15.9" y2="15.9" />
+                <line x1="15.9" y1="4.1" x2="14.7" y2="5.3" />
+                <line x1="5.3" y1="14.7" x2="4.1" y2="15.9" />
+              </svg>
+            ) : (
+              /* Crescent via two overlapping circles (geometric, no emoji) */
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <path
+                  d="M14.5 10.5A6 6 0 0 1 8 4a6 6 0 1 0 6.5 6.5Z"
+                  fill="currentColor"
+                  opacity="0.85"
+                />
+              </svg>
+            )}
+          </button>
+
           {/* Notification Bell (always visible) */}
           <div style={{ position: 'relative' }}>
             <button
@@ -91,9 +159,11 @@ export const Layout: React.FC<Props> = ({ children }) => {
               style={{ padding: '0.4rem', border: 'none', display: 'flex', alignItems: 'center', position: 'relative' }}
               title="Thông báo"
             >
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
-                <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+              {/* Geometric bell: flat-sided body + arc handle */}
+              <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 3.5C8.96 3.5 6.5 6 6.5 9v4.5L4.5 16h15l-2-2.5V9C17.5 6 15.04 3.5 12 3.5z" />
+                <path d="M10.3 19.5a1.7 1.7 0 0 0 3.4 0" />
+                <line x1="12" y1="2" x2="12" y2="3.5" />
               </svg>
               {unreadCount > 0 && (
                 <span style={{
@@ -155,10 +225,10 @@ export const Layout: React.FC<Props> = ({ children }) => {
                 style={{ padding: '0.4rem', border: 'none', display: 'flex', alignItems: 'center' }}
                 title="Giỏ hàng"
               >
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="9" cy="21" r="1"></circle>
-                  <circle cx="20" cy="21" r="1"></circle>
-                  <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
+                {/* Tote bag: arc handle + tapered body */}
+                <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+                  <path d="M4 10h16l-1.2 11H5.2z" />
                 </svg>
               </button>
 
@@ -175,7 +245,7 @@ export const Layout: React.FC<Props> = ({ children }) => {
                     borderRadius: '50%', 
                     width: '32px', 
                     height: '32px', 
-                    background: showProfileMenu ? 'var(--accent)' : '#f1f5f9', 
+                    background: showProfileMenu ? 'var(--accent)' : 'var(--skeleton-base)',
                     border: 'none',
                     color: showProfileMenu ? '#fff' : 'var(--text)',
                     transition: 'all 0.2s',
@@ -183,9 +253,10 @@ export const Layout: React.FC<Props> = ({ children }) => {
                   }}
                   title="Tài khoản"
                 >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                    <circle cx="12" cy="7" r="4"></circle>
+                  {/* Geometric person: circle head + U-shaped shoulders */}
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="8" r="3.5" />
+                    <path d="M5 21c0-3.87 3.13-7 7-7s7 3.13 7 7" />
                   </svg>
                 </button>
 
