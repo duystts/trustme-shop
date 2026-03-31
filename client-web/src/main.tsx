@@ -8,6 +8,7 @@ import { AdminPage } from "./pages/AdminPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { CheckoutPage } from "./pages/CheckoutPage";
 import { OrderHistoryPage } from "./pages/OrderHistoryPage";
+import { PaymentResultPage } from "./pages/PaymentResultPage";
 import { Layout } from "./shared/Layout";
 import { initAuth } from "./services/authApi";
 import "./styles.css";
@@ -41,8 +42,9 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
                 <Route path="/"              element={<HomePage />} />
                 <Route path="/home"          element={<HomePage />} />
                 <Route path="/products/:id"  element={<ProductDetailPage />} />
-                <Route path="/checkout"      element={<CheckoutPage />} />
-                <Route path="/orders"        element={<OrderHistoryPage />} />
+                <Route path="/checkout"        element={<CheckoutPage />} />
+                <Route path="/checkout/result" element={<PaymentResultPage />} />
+                <Route path="/orders"          element={<OrderHistoryPage />} />
                 <Route path="/profile"       element={<ProfilePage />} />
               </Routes>
             </Layout>

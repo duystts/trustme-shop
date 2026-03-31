@@ -99,7 +99,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/orders/**").hasAnyRole("ADMIN", "MANAGER", "CUSTOMER")
                         .requestMatchers(HttpMethod.PUT, "/api/orders/**").hasAnyRole("ADMIN", "MANAGER")
                         
-                        // Payment endpoints - Authenticated users
+                        // Payment gateway callbacks — must be public (called by VNPay/MoMo servers)
+                        .requestMatchers(HttpMethod.GET,  "/api/payments/vnpay/return").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/payments/momo/ipn").permitAll()
+                        // All other payment endpoints - Authenticated users
                         .requestMatchers("/api/payments/**").authenticated()
                         
                         // All other requests require authentication

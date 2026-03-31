@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
-import { getCartItems, createOrder, validateDiscount } from "../services/orderApi";
+import { getCartItems, createOrder, validateDiscount, initPayment, PaymentMethod } from "../services/orderApi";
 import { getToken } from "../services/authApi";
 
 type UserProfile = {
@@ -19,12 +19,12 @@ export const CheckoutPage: React.FC = () => {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
   const [discountCode, setDiscountCode] = useState("");
   const [discountAmount, setDiscountAmount] = useState(0);
   const [discountError, setDiscountError] = useState("");
   const [discountApplied, setDiscountApplied] = useState(false);
   const [checkingDiscount, setCheckingDiscount] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("COD");
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -78,28 +78,19 @@ export const CheckoutPage: React.FC = () => {
     if (items.length === 0) return;
     setLoading(true);
     try {
-      await createOrder({ address, discountCode: discountApplied ? discountCode : undefined, items: [] });
-      setSuccess(true);
+      const order = await createOrder({ address, discountCode: discountApplied ? discountCode : undefined, items: [] });
+      const payment = await initPayment(order.id, paymentMethod);
+      if (payment.paymentUrl) {
+        window.location.href = payment.paymentUrl;
+      } else {
+        navigate(`/checkout/result?orderId=${order.id}&status=success&method=COD`);
+      }
     } catch {
       alert("Đặt hàng thất bại. Vui lòng thử lại.");
     } finally {
       setLoading(false);
     }
   };
-
-  if (success) {
-    return (
-      <div className="page-container" style={{ textAlign: "center", paddingTop: "var(--space-2xl)" }}>
-        <h2>🎉 Đặt hàng thành công!</h2>
-        <p style={{ color: "var(--text-muted)", marginBottom: "var(--space-xl)" }}>
-          Cảm ơn bạn đã mua sắm tại trustme-shop. Đơn hàng của bạn đang được xử lý.
-        </p>
-        <button className="primary-button" onClick={() => navigate("/orders")}>
-          Xem Đơn Hàng Của Bạn
-        </button>
-      </div>
-    );
-  }
 
   return (
     <div className="page-container">
@@ -277,12 +268,85 @@ export const CheckoutPage: React.FC = () => {
               />
             </div>
 
+            {/* Payment method selector */}
+            <div>
+              <label style={{ fontSize: "var(--font-xs)", color: "var(--text-muted)", marginBottom: 8, display: "block", fontWeight: 600 }}>
+                Phương thức thanh toán
+              </label>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {(["COD", "VNPAY", "MOMO"] as PaymentMethod[]).map((m) => (
+                  <label
+                    key={m}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      padding: "10px 12px",
+                      borderRadius: "var(--radius-md)",
+                      border: `2px solid ${paymentMethod === m ? "var(--accent)" : "var(--border-subtle)"}`,
+                      background: paymentMethod === m ? "color-mix(in srgb, var(--accent) 8%, var(--bg-elevated))" : "var(--bg-elevated)",
+                      cursor: "pointer",
+                      transition: "border-color .15s, background .15s",
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="paymentMethod"
+                      value={m}
+                      checked={paymentMethod === m}
+                      onChange={() => setPaymentMethod(m)}
+                      style={{ accentColor: "var(--accent)", width: 16, height: 16 }}
+                    />
+                    {m === "COD" && (
+                      <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+                          <rect x="2" y="5" width="18" height="13" rx="2" stroke="currentColor" strokeWidth="1.5"/>
+                          <path d="M2 9h18" stroke="currentColor" strokeWidth="1.5"/>
+                          <rect x="5" y="13" width="4" height="2" rx="0.5" fill="currentColor"/>
+                        </svg>
+                        <span>
+                          <strong style={{ display: "block", fontSize: "var(--font-sm)" }}>Thanh toán khi nhận hàng (COD)</strong>
+                          <span style={{ fontSize: "var(--font-xs)", color: "var(--text-muted)" }}>Trả tiền mặt khi shipper giao hàng</span>
+                        </span>
+                      </span>
+                    )}
+                    {m === "VNPAY" && (
+                      <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+                          <rect x="2" y="5" width="18" height="13" rx="2" fill="#005baa"/>
+                          <text x="11" y="14.5" textAnchor="middle" fill="white" fontSize="7" fontWeight="bold" fontFamily="sans-serif">VNPay</text>
+                        </svg>
+                        <span>
+                          <strong style={{ display: "block", fontSize: "var(--font-sm)" }}>VNPay</strong>
+                          <span style={{ fontSize: "var(--font-xs)", color: "var(--text-muted)" }}>Thẻ ATM, Visa/Mastercard, QR Code</span>
+                        </span>
+                      </span>
+                    )}
+                    {m === "MOMO" && (
+                      <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+                          <rect x="2" y="2" width="18" height="18" rx="9" fill="#ae2070"/>
+                          <text x="11" y="14" textAnchor="middle" fill="white" fontSize="7" fontWeight="bold" fontFamily="sans-serif">MoMo</text>
+                        </svg>
+                        <span>
+                          <strong style={{ display: "block", fontSize: "var(--font-sm)" }}>MoMo</strong>
+                          <span style={{ fontSize: "var(--font-xs)", color: "var(--text-muted)" }}>Ví MoMo, QR Code</span>
+                        </span>
+                      </span>
+                    )}
+                  </label>
+                ))}
+              </div>
+            </div>
+
             <button
               type="submit"
               className="primary-button"
               disabled={items.length === 0 || loading}
             >
-              {loading ? "Đang xử lý…" : `Đặt hàng · ${total.toLocaleString("vi-VN")} ₫`}
+              {loading ? "Đang xử lý…" : paymentMethod === "COD"
+                ? `Đặt hàng · ${total.toLocaleString("vi-VN")} ₫`
+                : `Thanh toán ${paymentMethod} · ${total.toLocaleString("vi-VN")} ₫`}
             </button>
           </form>
         </div>
