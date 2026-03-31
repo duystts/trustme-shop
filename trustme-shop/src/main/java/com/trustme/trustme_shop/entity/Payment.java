@@ -25,6 +25,8 @@ public class Payment {
 
     private LocalDateTime paymentDate;
 
+    private String transactionId;
+
     @OneToOne
     @JoinColumn(name = "order_id", nullable = false)
     private Order order;

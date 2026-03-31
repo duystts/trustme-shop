@@ -63,6 +63,35 @@ export async function createOrder(data: CreateOrderRequest) {
   return res.data;
 }
 
+// ── Payment gateway ────────────────────────────────────────────────────────
+
+export type PaymentMethod = "COD" | "VNPAY" | "MOMO";
+
+export type PaymentInitResponse = {
+  orderId: number;
+  paymentMethod: PaymentMethod;
+  paymentUrl: string | null;
+  status: "PENDING" | "CONFIRMED";
+};
+
+export type PaymentStatus = {
+  id: number;
+  paymentMethod: string;
+  paymentStatus: string;
+  paymentDate: string | null;
+  transactionId: string | null;
+};
+
+export async function initPayment(orderId: number, paymentMethod: PaymentMethod): Promise<PaymentInitResponse> {
+  const res = await axios.post("/api/payments/initiate", { orderId, paymentMethod });
+  return res.data;
+}
+
+export async function getPaymentStatus(orderId: number): Promise<PaymentStatus> {
+  const res = await axios.get(`/api/payments/status/${orderId}`);
+  return res.data;
+}
+
 // Validate discount code against order total
 export async function validateDiscount(code: string, orderTotal: number): Promise<{ code: string; discountAmount: number }> {
   const res = await axios.post("/api/discounts/validate", null, {
