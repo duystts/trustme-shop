@@ -6,9 +6,23 @@ export type OrderUser = {
   id: number;
   fullName: string;
   email: string;
+  username?: string;
+  phone?: string;
 };
 
 export type OrderStatus = "PENDING" | "SHIPPING" | "DELIVERED" | "CANCELLED";
+
+export type OrderItem = {
+  id: number;
+  quantity: number;
+  price: number;
+  variantLabel?: string;
+  product: {
+    id: number;
+    name: string;
+    images?: { imageUrl: string; isPrimary?: boolean }[];
+  };
+};
 
 export type Order = {
   id: number;
@@ -17,6 +31,9 @@ export type Order = {
   status: OrderStatus;
   shippingAddress: string;
   orderDate: string;
+  discountCode?: string;
+  discountAmount?: number;
+  orderItems?: OrderItem[];
 };
 
 export type DashboardStats = {
@@ -238,7 +255,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
 
   return {
     totalOrders: orders.length,
-    totalRevenue: orders.reduce((sum, o) => sum + (o.totalMoney ?? 0), 0),
+    totalRevenue: orders.filter((o) => o.status === "DELIVERED").reduce((sum, o) => sum + (o.totalMoney ?? 0), 0),
     totalProducts,
     pendingOrders: orders.filter((o) => o.status === "PENDING").length,
   };

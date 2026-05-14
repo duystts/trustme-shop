@@ -1,5 +1,6 @@
 package com.trustme.trustme_shop.controller;
 
+import com.trustme.trustme_shop.dto.DiscountRequest;
 import com.trustme.trustme_shop.entity.Discount;
 import com.trustme.trustme_shop.service.DiscountService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -31,7 +32,7 @@ public class DiscountController {
     @PostMapping
     @Operation(summary = "Create discount")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
-    public ResponseEntity<Discount> create(@RequestBody Discount discount) {
+    public ResponseEntity<Discount> create(@RequestBody DiscountRequest discount) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(discountService.create(discount));
     }
@@ -39,7 +40,7 @@ public class DiscountController {
     @PutMapping("/{id}")
     @Operation(summary = "Update discount")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
-    public ResponseEntity<Discount> update(@PathVariable Long id, @RequestBody Discount discount) {
+    public ResponseEntity<Discount> update(@PathVariable Long id, @RequestBody DiscountRequest discount) {
         return ResponseEntity.ok(discountService.update(id, discount));
     }
 

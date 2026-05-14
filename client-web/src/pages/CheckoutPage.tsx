@@ -71,7 +71,7 @@ export const CheckoutPage: React.FC = () => {
   };
 
   const isLoggedIn = !!getToken();
-  const hasProfileData = !!(profile?.phone || profile?.address);
+  const hasAddress = !!profile?.address;
 
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -156,8 +156,8 @@ export const CheckoutPage: React.FC = () => {
             {isLoggedIn && (
               <div
                 style={{
-                  background: "#eff6ff",
-                  border: "1px solid #bfdbfe",
+                  background: profileLoading || hasAddress ? "#eff6ff" : "#fff7ed",
+                  border: `1px solid ${profileLoading || hasAddress ? "#bfdbfe" : "#fed7aa"}`,
                   borderRadius: "var(--radius-sm)",
                   padding: "var(--space-xs) var(--space-sm)",
                   display: "flex",
@@ -169,7 +169,7 @@ export const CheckoutPage: React.FC = () => {
               >
                 {profileLoading ? (
                   <span style={{ color: "#64748b" }}>Đang tải thông tin tài khoản…</span>
-                ) : hasProfileData ? (
+                ) : hasAddress ? (
                   <>
                     <span style={{ color: "#1e40af" }}>
                       Dùng thông tin của <strong>{profile!.fullName}</strong>?
@@ -193,9 +193,10 @@ export const CheckoutPage: React.FC = () => {
                     </button>
                   </>
                 ) : (
-                  <span style={{ color: "#64748b" }}>
-                    Chưa có SĐT / địa chỉ trong tài khoản —{" "}
-                    <a href="/profile" style={{ color: "var(--accent)" }}>cập nhật hồ sơ</a>
+                  <span style={{ color: "#92400e" }}>
+                    Tài khoản chưa có địa chỉ giao hàng —{" "}
+                    <a href="/profile" style={{ color: "#d97706", fontWeight: 600 }}>cập nhật hồ sơ</a>
+                    {" "}để điền nhanh lần sau
                   </span>
                 )}
               </div>
