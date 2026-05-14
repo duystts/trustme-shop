@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import {
   getProductById,
@@ -56,6 +56,20 @@ export const ProductDetailPage: React.FC = () => {
   // Selected options (optionId -> value)
   const [selectedOptions, setSelectedOptions] = useState<Record<number, string>>({});
 
+  // Matched variant ID derived from selected options
+  const matchedVariantId = useMemo<number | undefined>(() => {
+    if (!product?.options?.length || !product.variants) return undefined;
+    const allSelected = product.options.every((o: ProductOption) => selectedOptions[o.id]);
+    if (!allSelected) return undefined;
+    const v = product.variants.find((v: ProductVariant) => {
+      try {
+        const combo = JSON.parse(v.combination) as Record<string, string>;
+        return product.options!.every((o: ProductOption) => combo[o.name] === selectedOptions[o.id]);
+      } catch { return false; }
+    });
+    return v?.id;
+  }, [product, selectedOptions]);
+
   // Reviews
   const [reviews, setReviews] = useState<Review[]>([]);
   const [myReview, setMyReview] = useState<Review | null>(null);
@@ -109,7 +123,7 @@ export const ProductDetailPage: React.FC = () => {
     }
     setNeedLogin(false);
     if (!product) return;
-    await addToCart({ product: { id: product.id }, quantity: 1 });
+    await addToCart({ product: { id: product.id }, quantity: 1, variantId: matchedVariantId });
     setAddedToCart(true);
     setTimeout(() => setAddedToCart(false), 2500);
   };
@@ -123,7 +137,7 @@ export const ProductDetailPage: React.FC = () => {
     if (!product) return;
     setBuyingNow(true);
     try {
-      await addToCart({ product: { id: product.id }, quantity: 1 });
+      await addToCart({ product: { id: product.id }, quantity: 1, variantId: matchedVariantId });
       navigate("/checkout");
     } catch {
       alert("Không thể thêm vào giỏ. Vui lòng thử lại.");
@@ -244,15 +258,17 @@ export const ProductDetailPage: React.FC = () => {
           <p className="product-price">
             {product.price.toLocaleString("vi-VN")} ₫
           </p>
-          {product.stockQuantity !== undefined && (
-            <p className="pdp-stock">
-              {product.stockQuantity > 0 ? (
-                <span className="pdp-stock-ok">✓ Còn hàng ({product.stockQuantity} sản phẩm)</span>
-              ) : (
-                <span className="pdp-stock-out">✗ Hết hàng</span>
-              )}
-            </p>
-          )}
+          {/* Stock display — only for products without variants */}
+          {(!product.options || product.options.length === 0) && (() => {
+            const stock = product.effectiveStock ?? product.stockQuantity ?? 0;
+            return (
+              <p className="pdp-stock">
+                {stock > 0
+                  ? <span className="pdp-stock-ok">✓ Còn hàng ({stock} sản phẩm)</span>
+                  : <span className="pdp-stock-out">✗ Hết hàng</span>}
+              </p>
+            );
+          })()}
           {product.description && (
             <p className="product-description">{product.description}</p>
           )}
@@ -330,9 +346,10 @@ export const ProductDetailPage: React.FC = () => {
                   } catch { return false; }
                 })
               : undefined;
+            const noVariantStock = product.effectiveStock ?? product.stockQuantity ?? 0;
             const outOfStock = hasOptions
               ? !allSelected || !matchedVariant || matchedVariant.stockQuantity === 0
-              : product.stockQuantity === 0;
+              : noVariantStock === 0;
 
             return (
               <>

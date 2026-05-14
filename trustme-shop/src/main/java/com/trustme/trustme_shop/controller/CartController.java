@@ -33,9 +33,10 @@ public class CartController {
     public ResponseEntity<CartItem> addProductToCart(
             @PathVariable Long userId,
             @RequestParam Long productId,
-            @RequestParam @Min(value = 1, message = "Quantity must be at least 1") Integer quantity) {
+            @RequestParam @Min(value = 1, message = "Quantity must be at least 1") Integer quantity,
+            @RequestParam(required = false) Long variantId) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(cartService.addProductToCart(userId, productId, quantity));
+                .body(cartService.addProductToCart(userId, productId, quantity, variantId));
     }
 
     @PutMapping("/item/{cartItemId}")

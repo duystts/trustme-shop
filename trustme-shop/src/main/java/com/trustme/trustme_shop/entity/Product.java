@@ -7,6 +7,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
+
 @Entity
 @Table(name = "products")
 @Getter
@@ -31,6 +32,11 @@ public class Product {
 
     private Integer stockQuantity;
 
+    /** Soft-delete flag — false means "deleted", filtered out automatically by @SQLRestriction */
+    @Builder.Default
+    @Column(nullable = false, columnDefinition = "boolean default true")
+    private boolean active = true;
+
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(
         name = "product_categories",
@@ -52,6 +58,19 @@ public class Product {
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
+
+    /**
+     * Effective stock quantity:
+     * - Has variants → sum of all variant stockQuantity
+     * - No variants  → Product.stockQuantity (manually managed)
+     */
+    @Transient
+    public int getEffectiveStock() {
+        if (variants != null && !variants.isEmpty()) {
+            return variants.stream().mapToInt(ProductVariant::getStockQuantity).sum();
+        }
+        return stockQuantity != null ? stockQuantity : 0;
+    }
 
     @PrePersist
     protected void onCreate() {

@@ -24,20 +24,16 @@ export async function getCartItems() {
   }
 }
 
-export async function addToCart(item: any) {
+export async function addToCart(item: { product: { id: number }; quantity: number; variantId?: number }) {
   const userId = getUserId();
   if (!userId) {
     alert("Vui lòng đăng nhập trước khi thêm vào giỏ hàng!");
     return;
   }
-  // The backend API: POST /api/cart/user/{userId}/add?productId=...&quantity=...
   try {
-    await axios.post(`/api/cart/user/${userId}/add`, null, {
-      params: {
-        productId: item.product.id,
-        quantity: item.quantity
-      }
-    });
+    const params: Record<string, any> = { productId: item.product.id, quantity: item.quantity };
+    if (item.variantId) params.variantId = item.variantId;
+    await axios.post(`/api/cart/user/${userId}/add`, null, { params });
   } catch (err) {
     console.error("Failed to add to cart", err);
   }

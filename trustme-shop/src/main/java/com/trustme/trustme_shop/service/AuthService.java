@@ -35,6 +35,10 @@ public class AuthService {
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new BadRequestException("Email already exists: " + request.getEmail());
         }
+
+        if (userRepository.existsByUsername(request.getUsername())) {
+            throw new BadRequestException("Username already exists: " + request.getUsername());
+        }
         
         // Check if phone already exists
         if (request.getPhone() != null && userRepository.existsByPhone(request.getPhone())) {
@@ -43,6 +47,7 @@ public class AuthService {
 
         User user = User.builder()
                 .fullName(request.getFullName())
+                .username(request.getUsername())
                 .email(request.getEmail())
                 .password(passwordEncoder.encode(request.getPassword()))
                 .phone(request.getPhone())
@@ -70,14 +75,17 @@ public class AuthService {
     }
 
     public AuthResponse login(LoginRequest request) {
+        // Tìm user theo email hoặc username
+        String emailOrUsername = request.getEmailOrUsername();
+        User user = userRepository.findByEmail(emailOrUsername)
+                .or(() -> userRepository.findByUsername(emailOrUsername))
+                .orElseThrow(() -> new BadRequestException("Invalid email/username or password"));
+
         authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
+                new UsernamePasswordAuthenticationToken(user.getEmail(), request.getPassword())
         );
 
-        User user = userRepository.findByEmail(request.getEmail())
-                .orElseThrow(() -> new BadRequestException("Invalid email or password"));
-
-        UserDetails userDetails = userDetailsService.loadUserByUsername(request.getEmail());
+        UserDetails userDetails = userDetailsService.loadUserByUsername(user.getEmail());
         String token = jwtUtil.generateToken(userDetails);
 
         return AuthResponse.builder()

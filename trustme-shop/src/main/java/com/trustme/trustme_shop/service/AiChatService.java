@@ -13,6 +13,7 @@ import com.trustme.trustme_shop.repository.ProductRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
@@ -48,6 +49,7 @@ public class AiChatService {
 
     private static final Pattern PRODUCT_PATTERN = Pattern.compile("\\[PRODUCT:([^]]+)]");
 
+    @Transactional(readOnly = true)
     public AiChatResponse chat(AiChatRequest request) {
         List<Category> categories = categoryRepository.findAll();
         String systemPrompt = buildSystemPrompt(categories);

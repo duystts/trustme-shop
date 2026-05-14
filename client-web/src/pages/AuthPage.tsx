@@ -6,9 +6,11 @@ type Tab = "login" | "register";
 
 export const AuthPage: React.FC = () => {
   const [tab, setTab] = useState<Tab>("login");
+  const [emailOrUsername, setEmailOrUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
+  const [username, setUsername] = useState("");
   const [phone, setPhone] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
@@ -23,11 +25,11 @@ export const AuthPage: React.FC = () => {
     reset();
     setLoading(true);
     try {
-      const res = await login({ email, password });
+      const res = await login({ emailOrUsername, password });
       saveAuthData(res);
       navigate("/");
     } catch {
-      setError("Sai email hoặc mật khẩu. Vui lòng thử lại.");
+      setError("Sai email/tên đăng nhập hoặc mật khẩu. Vui lòng thử lại.");
     } finally {
       setLoading(false);
     }
@@ -46,7 +48,7 @@ export const AuthPage: React.FC = () => {
     }
     setLoading(true);
     try {
-      const res = await register({ fullName, email, password, confirmPassword, phone });
+      const res = await register({ fullName, username, email, password, confirmPassword, phone });
       saveAuthData(res);
       navigate("/");
     } catch (err: any) {
@@ -83,9 +85,9 @@ export const AuthPage: React.FC = () => {
         {tab === "login" && (
           <form className="auth-form" onSubmit={handleLogin} noValidate>
             <div className="form-group">
-              <label htmlFor="login-email">Email</label>
-              <input id="login-email" type="email" placeholder="you@example.com"
-                value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />
+              <label htmlFor="login-emailOrUsername">Email hoặc tên đăng nhập</label>
+              <input id="login-emailOrUsername" type="text" placeholder="you@example.com hoặc username"
+                value={emailOrUsername} onChange={(e) => setEmailOrUsername(e.target.value)} required autoFocus />
             </div>
             <div className="form-group">
               <label htmlFor="login-password">Mật khẩu</label>
@@ -104,6 +106,11 @@ export const AuthPage: React.FC = () => {
               <label htmlFor="reg-name">Họ tên</label>
               <input id="reg-name" type="text" placeholder="Nguyễn Văn A"
                 value={fullName} onChange={(e) => setFullName(e.target.value)} required autoFocus />
+            </div>
+            <div className="form-group">
+              <label htmlFor="reg-username">Tên đăng nhập</label>
+              <input id="reg-username" type="text" placeholder="vd: nguyen_van_a"
+                value={username} onChange={(e) => setUsername(e.target.value)} required />
             </div>
             <div className="form-group">
               <label htmlFor="reg-email">Email</label>

@@ -45,7 +45,7 @@ public class ProductService {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public Page<Product> getAllProducts(Pageable pageable) {
-        return productRepository.findAll(pageable);
+        return productRepository.findAllActive(pageable);
     }
 
     public Product getProductById(Long id) {
@@ -57,8 +57,32 @@ public class ProductService {
         return productRepository.findByCategoryId(categoryId);
     }
 
-    public List<Product> searchProductsByName(String name) {
-        return productRepository.findByNameContainingIgnoreCase(name);
+    public List<Product> searchProductsByName(String query) {
+        if (query == null || query.isBlank()) return List.of();
+
+        String[] tokens = query.trim().split("\\s+");
+
+        // Count how many tokens each product matches (relevance score)
+        Map<Long, Long> scoreMap = new java.util.HashMap<>();
+        Map<Long, Product> productMap = new java.util.LinkedHashMap<>();
+
+        for (String token : tokens) {
+            if (token.length() < 2) continue; // skip single-char tokens
+            for (Product p : productRepository.findByToken(token)) {
+                scoreMap.merge(p.getId(), 1L, Long::sum);
+                productMap.put(p.getId(), p);
+            }
+        }
+
+        // Minimum tokens that must match: ceil(n/2), at least 1
+        long minScore = Math.max(1, (tokens.length + 1) / 2);
+
+        // Sort by score descending, filter out products below threshold
+        return scoreMap.entrySet().stream()
+                .filter(e -> e.getValue() >= minScore)
+                .sorted(Map.Entry.<Long, Long>comparingByValue().reversed())
+                .map(e -> productMap.get(e.getKey()))
+                .collect(Collectors.toList());
     }
 
     public List<Product> getProductsByPriceRange(Double minPrice, Double maxPrice) {
@@ -124,7 +148,8 @@ public class ProductService {
     @Transactional
     public void deleteProduct(Long id) {
         Product product = getProductById(id);
-        productRepository.delete(product);
+        product.setActive(false);
+        productRepository.save(product);
     }
 
     @Transactional
@@ -421,18 +446,31 @@ public class ProductService {
 
             // ---- Sheet 2: Hướng dẫn ----
             Sheet guide = workbook.createSheet("Hướng dẫn");
+
             CellStyle titleStyle = workbook.createCellStyle();
             Font titleFont = workbook.createFont();
             titleFont.setBold(true);
             titleFont.setFontHeightInPoints((short) 12);
             titleStyle.setFont(titleFont);
 
+            CellStyle sectionStyle = workbook.createCellStyle();
+            Font sectionFont = workbook.createFont();
+            sectionFont.setBold(true);
+            sectionFont.setFontHeightInPoints((short) 11);
+            sectionFont.setColor(IndexedColors.DARK_BLUE.getIndex());
+            sectionStyle.setFont(sectionFont);
+
+            CellStyle catStyle = workbook.createCellStyle();
+            catStyle.setFillForegroundColor(IndexedColors.LIGHT_YELLOW.getIndex());
+            catStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+
+            // Column guide table
             String[][] guideRows = {
                 {"Cột", "Tên cột", "Bắt buộc", "Mô tả / Ví dụ"},
                 {"A", "name",          "✓", "Tên sản phẩm"},
                 {"B", "description",   "",  "Mô tả sản phẩm"},
                 {"C", "price",         "✓", "Giá (VD: 299000)"},
-                {"D", "stockQuantity", "",  "Tồn kho mặc định (VD: 100)"},
+                {"D", "stockQuantity", "",  "Tồn kho mặc định (VD: 100) — để trống nếu dùng biến thể"},
                 {"E", "categoryNames", "",  "Tên danh mục, nhiều danh mục cách nhau dấu ; (VD: Men;New Arrivals)"},
                 {"F", "optionNames",   "",  "Tên các tùy chọn, cách nhau dấu ; (VD: Size;Màu sắc)"},
                 {"G", "optionValues",  "",  "Giá trị mỗi tùy chọn: nhóm cách nhau | , giá trị trong nhóm cách ; (VD: S;M;L|Đỏ;Xanh)"},
@@ -444,9 +482,31 @@ public class ProductService {
                     Cell cell = row.createCell(c);
                     cell.setCellValue(guideRows[r][c]);
                     if (r == 0) cell.setCellStyle(titleStyle);
-                    guide.setColumnWidth(c, c == 3 ? 18000 : 5000);
+                    guide.setColumnWidth(c, c == 3 ? 20000 : 5000);
                 }
             }
+
+            // ---- Danh sách danh mục hiện có ----
+            int catStartRow = guideRows.length + 1;
+
+            Row catHeader = guide.createRow(catStartRow);
+            Cell catHeaderCell = catHeader.createCell(0);
+            catHeaderCell.setCellValue("Danh sách danh mục hiện có (copy tên chính xác vào cột E)");
+            catHeaderCell.setCellStyle(sectionStyle);
+
+            List<com.trustme.trustme_shop.entity.Category> categories = categoryRepository.findAll();
+            for (int i = 0; i < categories.size(); i++) {
+                Row catRow = guide.createRow(catStartRow + 1 + i);
+                Cell nameCell = catRow.createCell(0);
+                nameCell.setCellValue(categories.get(i).getName());
+                nameCell.setCellStyle(catStyle);
+                if (categories.get(i).getDescription() != null && !categories.get(i).getDescription().isBlank()) {
+                    Cell descCell = catRow.createCell(1);
+                    descCell.setCellValue(categories.get(i).getDescription());
+                }
+            }
+            guide.setColumnWidth(0, 7000);
+            guide.setColumnWidth(1, 15000);
 
             workbook.write(out);
             return out.toByteArray();

@@ -1,5 +1,6 @@
 package com.trustme.trustme_shop.service;
 
+import com.trustme.trustme_shop.dto.DiscountRequest;
 import com.trustme.trustme_shop.entity.Discount;
 import com.trustme.trustme_shop.exception.BadRequestException;
 import com.trustme.trustme_shop.exception.ResourceNotFoundException;
@@ -27,28 +28,57 @@ public class DiscountService {
     }
 
     @Transactional
-    public Discount create(Discount discount) {
-        if (discountRepository.existsByCodeIgnoreCase(discount.getCode())) {
-            throw new BadRequestException("Mã '" + discount.getCode() + "' đã tồn tại");
+    public Discount create(DiscountRequest req) {
+        validateRequest(req);
+        if (discountRepository.existsByCodeIgnoreCase(req.getCode())) {
+            throw new BadRequestException("Mã '" + req.getCode() + "' đã tồn tại");
         }
-        discount.setCode(discount.getCode().toUpperCase());
+        Discount discount = new Discount();
+        applyFields(discount, req);
         return discountRepository.save(discount);
     }
 
     @Transactional
-    public Discount update(Long id, Discount data) {
+    public Discount update(Long id, DiscountRequest req) {
+        validateRequest(req);
         Discount existing = getById(id);
-        existing.setCode(data.getCode().toUpperCase());
-        existing.setDescription(data.getDescription());
-        existing.setDiscountType(data.getDiscountType());
-        existing.setDiscountValue(data.getDiscountValue());
-        existing.setMinOrderValue(data.getMinOrderValue());
-        existing.setMaxDiscount(data.getMaxDiscount());
-        existing.setStartDate(data.getStartDate());
-        existing.setEndDate(data.getEndDate());
-        existing.setUsageLimit(data.getUsageLimit());
-        existing.setActive(data.isActive());
+        String newCode = req.getCode().toUpperCase();
+        if (!newCode.equals(existing.getCode()) && discountRepository.existsByCodeIgnoreCase(newCode)) {
+            throw new BadRequestException("Mã '" + newCode + "' đã tồn tại");
+        }
+        applyFields(existing, req);
         return discountRepository.save(existing);
+    }
+
+    private void validateRequest(DiscountRequest req) {
+        if (req.getCode() == null || req.getCode().isBlank()) {
+            throw new BadRequestException("Mã giảm giá không được để trống");
+        }
+        if (req.getDiscountType() == null ||
+                (!req.getDiscountType().equalsIgnoreCase("PERCENTAGE") &&
+                 !req.getDiscountType().equalsIgnoreCase("FIXED"))) {
+            throw new BadRequestException("Loại giảm giá phải là PERCENTAGE hoặc FIXED");
+        }
+        if (req.getDiscountValue() == null || req.getDiscountValue() <= 0) {
+            throw new BadRequestException("Giá trị giảm giá phải lớn hơn 0");
+        }
+        if (req.getStartDate() != null && req.getEndDate() != null
+                && req.getStartDate().isAfter(req.getEndDate())) {
+            throw new BadRequestException("Ngày bắt đầu phải trước ngày kết thúc");
+        }
+    }
+
+    private void applyFields(Discount discount, DiscountRequest req) {
+        discount.setCode(req.getCode().toUpperCase());
+        discount.setDescription(req.getDescription());
+        discount.setDiscountType(req.getDiscountType().toUpperCase());
+        discount.setDiscountValue(req.getDiscountValue());
+        discount.setMinOrderValue(req.getMinOrderValue() != null ? req.getMinOrderValue() : 0.0);
+        discount.setMaxDiscount(req.getMaxDiscount());
+        discount.setStartDate(req.getStartDate());
+        discount.setEndDate(req.getEndDate());
+        discount.setUsageLimit(req.getUsageLimit());
+        discount.setActive(req.isActive());
     }
 
     @Transactional

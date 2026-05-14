@@ -1,7 +1,7 @@
 import axios from "axios";
 
 export type LoginRequest = {
-  email: string;
+  emailOrUsername: string;
   password: string;
 };
 
@@ -15,6 +15,7 @@ export type AuthResponse = {
 
 export type RegisterRequest = {
   fullName: string;
+  username: string;
   email: string;
   password: string;
   confirmPassword: string;
@@ -26,6 +27,7 @@ export async function login(data: LoginRequest): Promise<AuthResponse> {
   const res = await axios.post("/api/auth/login", data);
   return res.data;
 }
+
 
 export async function register(data: RegisterRequest): Promise<AuthResponse> {
   const res = await axios.post("/api/auth/register", data);

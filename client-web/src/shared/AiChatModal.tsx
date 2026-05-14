@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import axios from "axios";
+import { useNavigate } from "react-router-dom";
 import type { Product } from "../services/productApi";
 import { PdpQuickviewModal } from "./PdpQuickviewModal";
 import { addToCart } from "../services/orderApi";
@@ -51,6 +52,7 @@ export const AiChatModal: React.FC<Props> = ({ onClose }) => {
 
   // PDP Modal state
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -125,9 +127,23 @@ export const AiChatModal: React.FC<Props> = ({ onClose }) => {
                       gap: 12,
                       boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
                     }}>
-                    <div className="image-placeholder" style={{ width: 48, height: 48, fontSize: '1.2rem', flexShrink: 0 }}>
-                      {msg.product.name.charAt(0)}
-                    </div>
+                    {(() => {
+                      const imgs = msg.product.images;
+                      const src = imgs && imgs.length > 0
+                        ? (imgs.find(img => img.isPrimary) ?? imgs[0]).imageUrl
+                        : null;
+                      return src ? (
+                        <img
+                          src={src}
+                          alt={msg.product.name}
+                          style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 8, flexShrink: 0, border: '1px solid var(--border-subtle)' }}
+                        />
+                      ) : (
+                        <div className="image-placeholder" style={{ width: 72, height: 72, fontSize: '1.4rem', flexShrink: 0 }}>
+                          {msg.product.name.charAt(0)}
+                        </div>
+                      );
+                    })()}
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 600, fontSize: 'var(--font-sm)', color: 'var(--text)' }}>
                         {msg.product.name}
@@ -135,6 +151,21 @@ export const AiChatModal: React.FC<Props> = ({ onClose }) => {
                       <div style={{ color: 'var(--accent)', fontWeight: 700, fontSize: 'var(--font-sm)', marginTop: 4 }}>
                         {msg.product.price.toLocaleString("vi-VN")} ₫
                       </div>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onClose(); navigate(`/products/${msg.product!.id}`); }}
+                        style={{
+                          marginTop: 6,
+                          fontSize: 'var(--font-xs)',
+                          padding: '3px 10px',
+                          borderRadius: 'var(--radius-sm)',
+                          border: '1px solid var(--border-subtle)',
+                          background: 'transparent',
+                          cursor: 'pointer',
+                          color: 'var(--text-muted)',
+                        }}
+                      >
+                        Xem chi tiết →
+                      </button>
                     </div>
                   </div>
                 )}

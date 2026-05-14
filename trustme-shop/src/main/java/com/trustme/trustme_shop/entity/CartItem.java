@@ -28,4 +28,10 @@ public class CartItem {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "product_id", nullable = false)
     private Product product;
+
+    /** ID of the selected ProductVariant (null if product has no variants) */
+    private Long variantId;
+
+    /** Human-readable variant label stored at add-time, e.g. "Màu sắc: Đỏ / Size: L" */
+    private String variantLabel;
 }

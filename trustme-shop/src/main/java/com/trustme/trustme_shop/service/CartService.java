@@ -3,12 +3,19 @@ package com.trustme.trustme_shop.service;
 import com.trustme.trustme_shop.entity.Cart;
 import com.trustme.trustme_shop.entity.CartItem;
 import com.trustme.trustme_shop.entity.Product;
+import com.trustme.trustme_shop.entity.ProductVariant;
+import com.trustme.trustme_shop.exception.BadRequestException;
 import com.trustme.trustme_shop.exception.ResourceNotFoundException;
 import com.trustme.trustme_shop.repository.CartItemRepository;
 import com.trustme.trustme_shop.repository.CartRepository;
+import com.trustme.trustme_shop.repository.ProductVariantRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Map;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.util.List;
 
@@ -19,6 +26,8 @@ public class CartService {
     private final CartRepository cartRepository;
     private final CartItemRepository cartItemRepository;
     private final ProductService productService;
+    private final ProductVariantRepository productVariantRepository;
+    private final ObjectMapper objectMapper;
 
     public Cart getCartByUserId(Long userId) {
         return cartRepository.findByUserId(userId)
@@ -26,22 +35,68 @@ public class CartService {
     }
 
     @Transactional
-    public CartItem addProductToCart(Long userId, Long productId, Integer quantity) {
+    public CartItem addProductToCart(Long userId, Long productId, Integer quantity, Long variantId) {
         Cart cart = getCartByUserId(userId);
         Product product = productService.getProductById(productId);
 
-        CartItem cartItem = cartItemRepository.findByCartIdAndProductId(cart.getId(), productId)
+        // Resolve variant and stock
+        ProductVariant variant = null;
+        String variantLabel = null;
+        int available;
+
+        if (variantId != null) {
+            variant = productVariantRepository.findByIdAndProductId(variantId, productId)
+                    .orElseThrow(() -> new BadRequestException("Biến thể không hợp lệ"));
+            available = variant.getStockQuantity();
+            variantLabel = buildVariantLabel(variant.getCombination());
+        } else {
+            available = product.getEffectiveStock();
+        }
+
+        if (available <= 0) {
+            throw new BadRequestException("Sản phẩm \"" + product.getName() + "\" đã hết hàng");
+        }
+
+        final ProductVariant finalVariant = variant;
+        final String finalLabel = variantLabel;
+
+        CartItem cartItem = cartItemRepository.findByCartIdAndProductIdAndVariantId(cart.getId(), productId, variantId)
                 .map(existing -> {
-                    existing.setQuantity(existing.getQuantity() + quantity);
+                    int newQty = existing.getQuantity() + quantity;
+                    if (newQty > available) {
+                        throw new BadRequestException(
+                            "Chỉ còn " + available + " sản phẩm \"" + product.getName() + "\" trong kho");
+                    }
+                    existing.setQuantity(newQty);
                     return existing;
                 })
-                .orElse(CartItem.builder()
-                        .cart(cart)
-                        .product(product)
-                        .quantity(quantity)
-                        .build());
+                .orElseGet(() -> {
+                    if (quantity > available) {
+                        throw new BadRequestException(
+                            "Chỉ còn " + available + " sản phẩm \"" + product.getName() + "\" trong kho");
+                    }
+                    return CartItem.builder()
+                            .cart(cart)
+                            .product(product)
+                            .quantity(quantity)
+                            .variantId(finalVariant != null ? finalVariant.getId() : null)
+                            .variantLabel(finalLabel)
+                            .build();
+                });
 
         return cartItemRepository.save(cartItem);
+    }
+
+    private String buildVariantLabel(String combinationJson) {
+        try {
+            Map<String, String> map = objectMapper.readValue(combinationJson,
+                    new TypeReference<Map<String, String>>() {});
+            StringBuilder sb = new StringBuilder();
+            map.forEach((k, v) -> { if (sb.length() > 0) sb.append(" / "); sb.append(k).append(": ").append(v); });
+            return sb.toString();
+        } catch (Exception e) {
+            return combinationJson;
+        }
     }
 
     @Transactional

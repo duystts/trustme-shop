@@ -80,7 +80,7 @@ export const PaymentResultPage: React.FC = () => {
               >
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
                   <span style={{ color: "var(--text-muted)" }}>Mã đơn hàng</span>
-                  <strong>#{status.id}</strong>
+                  <strong>#{orderId}</strong>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
                   <span style={{ color: "var(--text-muted)" }}>Phương thức</span>

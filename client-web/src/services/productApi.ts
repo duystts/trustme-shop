@@ -29,8 +29,9 @@ export type Product = {
   description?: string;
   price: number;
   stockQuantity?: number;
+  effectiveStock?: number;
   categories?: Category[];
-  images?: { id: number; imageUrl: string }[];
+  images?: { id: number; imageUrl: string; isPrimary?: boolean }[];
   options?: ProductOption[];
   variants?: ProductVariant[];
 };

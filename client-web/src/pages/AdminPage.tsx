@@ -32,6 +32,7 @@ import {
   deleteDiscount,
   DashboardStats,
   Order,
+  OrderItem,
   OrderStatus,
   ProductInput,
   ProductImage,
@@ -175,6 +176,10 @@ const OrdersTab: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
   const [updating, setUpdating] = useState<number | null>(null);
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+
+  const toggleExpand = (id: number) =>
+    setExpanded((prev) => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
   const [filter, setFilter] = useState<OrderStatus | "ALL">("ALL");
 
   const load = useCallback(() => {
@@ -225,6 +230,7 @@ const OrdersTab: React.FC = () => {
           <table className="admin-table">
             <thead>
               <tr>
+                <th style={{ width: 32 }}></th>
                 <th>#</th>
                 <th>Khách hàng</th>
                 <th>Tổng tiền</th>
@@ -234,53 +240,145 @@ const OrdersTab: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {visible.map((o) => (
-                <tr key={o.id}>
-                  <td>#{o.id}</td>
-                  <td>
-                    <div>{o.user?.fullName ?? "—"}</div>
-                    <div style={{ fontSize: "var(--font-xs)", color: "var(--text-muted)" }}>{o.user?.email}</div>
-                  </td>
-                  <td>{(o.totalMoney ?? 0).toLocaleString("vi-VN")} ₫</td>
-                  <td style={{ whiteSpace: "nowrap" }}>
-                    {o.orderDate ? new Date(o.orderDate).toLocaleDateString("vi-VN") : "—"}
-                  </td>
-                  <td>
-                    <span className={`order-badge status-${o.status.toLowerCase()}`}>
-                      {STATUS_LABELS[o.status] ?? o.status}
-                    </span>
-                  </td>
-                  <td>
-                    <div style={{ display: "flex", gap: "var(--space-xs)" }}>
-                      {STATUS_NEXT[o.status] && (
-                        <button
-                          className="primary-button"
-                          style={{ fontSize: "var(--font-xs)", padding: "0.25rem 0.6rem" }}
-                          disabled={updating === o.id}
-                          onClick={() => handleNext(o)}
-                        >
-                          {updating === o.id ? "…" : `→ ${STATUS_LABELS[STATUS_NEXT[o.status]!]}`}
-                        </button>
-                      )}
-                      {o.status === "PENDING" && (
-                        <button
-                          className="danger-button"
-                          disabled={updating === o.id}
-                          onClick={() => handleCancel(o)}
-                        >
-                          Hủy
-                        </button>
-                      )}
-                      {o.status !== "PENDING" && !STATUS_NEXT[o.status] && (
-                        <span style={{ color: "var(--text-muted)", fontSize: "var(--font-xs)" }}>—</span>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {visible.map((o) => {
+                const isOpen = expanded.has(o.id);
+                const items: OrderItem[] = o.orderItems ?? [];
+                return (
+                  <React.Fragment key={o.id}>
+                    <tr style={{ cursor: "pointer" }} onClick={() => toggleExpand(o.id)}>
+                      <td style={{ textAlign: "center", fontSize: "var(--font-xs)", color: "var(--text-muted)" }}>
+                        {isOpen ? "▼" : "▶"}
+                      </td>
+                      <td>#{o.id}</td>
+                      <td>
+                        <div style={{ fontWeight: 500 }}>{o.user?.fullName ?? "—"}</div>
+                        {o.user?.username && (
+                          <div style={{ fontSize: "var(--font-xs)", color: "var(--text-muted)" }}>@{o.user.username}</div>
+                        )}
+                        <div style={{ fontSize: "var(--font-xs)", color: "var(--text-muted)" }}>{o.user?.email}</div>
+                        {o.user?.phone && (
+                          <div style={{ fontSize: "var(--font-xs)", color: "var(--text-muted)" }}>📞 {o.user.phone}</div>
+                        )}
+                      </td>
+                      <td>
+                        <div>{(o.totalMoney ?? 0).toLocaleString("vi-VN")} ₫</div>
+                        {(o.discountAmount ?? 0) > 0 && (
+                          <div style={{ fontSize: "var(--font-xs)", color: "var(--text-muted)" }}>
+                            Giảm: -{(o.discountAmount ?? 0).toLocaleString("vi-VN")} ₫
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ whiteSpace: "nowrap" }}>
+                        {o.orderDate ? new Date(o.orderDate).toLocaleDateString("vi-VN") : "—"}
+                      </td>
+                      <td>
+                        <span className={`order-badge status-${o.status.toLowerCase()}`}>
+                          {STATUS_LABELS[o.status] ?? o.status}
+                        </span>
+                      </td>
+                      <td onClick={(e) => e.stopPropagation()}>
+                        <div style={{ display: "flex", gap: "var(--space-xs)" }}>
+                          {STATUS_NEXT[o.status] && (
+                            <button
+                              className="primary-button"
+                              style={{ fontSize: "var(--font-xs)", padding: "0.25rem 0.6rem" }}
+                              disabled={updating === o.id}
+                              onClick={() => handleNext(o)}
+                            >
+                              {updating === o.id ? "…" : `→ ${STATUS_LABELS[STATUS_NEXT[o.status]!]}`}
+                            </button>
+                          )}
+                          {o.status === "PENDING" && (
+                            <button
+                              className="danger-button"
+                              disabled={updating === o.id}
+                              onClick={() => handleCancel(o)}
+                            >
+                              Hủy
+                            </button>
+                          )}
+                          {o.status !== "PENDING" && !STATUS_NEXT[o.status] && (
+                            <span style={{ color: "var(--text-muted)", fontSize: "var(--font-xs)" }}>—</span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                    {isOpen && (
+                      <tr>
+                        <td colSpan={7} style={{ padding: 0, background: "var(--bg-secondary, #f8f9fa)" }}>
+                          <div style={{ padding: "0.75rem 1.25rem" }}>
+                            {/* Địa chỉ giao hàng */}
+                            <div style={{ marginBottom: "0.5rem", fontSize: "var(--font-sm)" }}>
+                              <span style={{ fontWeight: 600 }}>Địa chỉ giao: </span>
+                              <span style={{ color: "var(--text-muted)" }}>{o.shippingAddress || "—"}</span>
+                              {o.discountCode && (
+                                <span style={{ marginLeft: "1rem" }}>
+                                  <span style={{ fontWeight: 600 }}>Mã giảm: </span>
+                                  <span style={{ color: "var(--color-primary, #4f8ef7)" }}>{o.discountCode}</span>
+                                </span>
+                              )}
+                            </div>
+                            {/* Danh sách sản phẩm */}
+                            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "var(--font-sm)" }}>
+                              <thead>
+                                <tr style={{ borderBottom: "1px solid var(--border-color, #dee2e6)" }}>
+                                  <th style={{ textAlign: "left", padding: "0.25rem 0.5rem", fontWeight: 600 }}>Sản phẩm</th>
+                                  <th style={{ textAlign: "center", padding: "0.25rem 0.5rem", fontWeight: 600 }}>SL</th>
+                                  <th style={{ textAlign: "right", padding: "0.25rem 0.5rem", fontWeight: 600 }}>Đơn giá</th>
+                                  <th style={{ textAlign: "right", padding: "0.25rem 0.5rem", fontWeight: 600 }}>Thành tiền</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {items.length === 0 ? (
+                                  <tr><td colSpan={4} style={{ color: "var(--text-muted)", padding: "0.5rem" }}>Không có sản phẩm</td></tr>
+                                ) : items.map((item) => {
+                                  const imgs = item.product?.images;
+                                  const thumb = imgs?.find(i => i.isPrimary)?.imageUrl ?? imgs?.[0]?.imageUrl;
+                                  return (
+                                    <tr key={item.id} style={{ borderBottom: "1px solid var(--border-color, #dee2e6)" }}>
+                                      <td style={{ padding: "0.35rem 0.5rem" }}>
+                                        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                                          {thumb && <img src={thumb} alt="" style={{ width: 36, height: 36, objectFit: "cover", borderRadius: 4, flexShrink: 0 }} />}
+                                          <div>
+                                            <div>{item.product?.name ?? "—"}</div>
+                                            {item.variantLabel && (
+                                              <div style={{ display: "flex", flexWrap: "wrap", gap: 3, marginTop: 3 }}>
+                                                {item.variantLabel.split(" / ").map((part, i) => (
+                                                  <span key={i} style={{
+                                                    fontSize: "var(--font-xs)",
+                                                    padding: "1px 7px",
+                                                    borderRadius: "var(--radius-sm, 4px)",
+                                                    background: "var(--surface-2, #f1f5f9)",
+                                                    border: "1px solid var(--border-subtle, #e2e8f0)",
+                                                    color: "var(--text-muted)",
+                                                    whiteSpace: "nowrap",
+                                                  }}>
+                                                    {part}
+                                                  </span>
+                                                ))}
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </td>
+                                      <td style={{ textAlign: "center", padding: "0.35rem 0.5rem" }}>x{item.quantity}</td>
+                                      <td style={{ textAlign: "right", padding: "0.35rem 0.5rem" }}>{(item.price ?? 0).toLocaleString("vi-VN")} ₫</td>
+                                      <td style={{ textAlign: "right", padding: "0.35rem 0.5rem", fontWeight: 600 }}>{((item.price ?? 0) * item.quantity).toLocaleString("vi-VN")} ₫</td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
               {visible.length === 0 && (
                 <tr>
-                  <td colSpan={6} style={{ color: "var(--text-muted)", textAlign: "center" }}>
+                  <td colSpan={7} style={{ color: "var(--text-muted)", textAlign: "center" }}>
                     Không có đơn hàng nào
                   </td>
                 </tr>
@@ -537,6 +635,7 @@ const ProductsTab: React.FC = () => {
     if (!savedProductId) return;
     setSavingVariantId(variantId);
     await updateProductVariant(savedProductId, variantId, qty).catch(() => {});
+    setVariants((prev) => prev.map((v) => v.id === variantId ? { ...v, stockQuantity: qty } : v));
     setSavingVariantId(null);
   };
 
@@ -644,7 +743,7 @@ const ProductsTab: React.FC = () => {
                   <td>#{p.id}</td>
                   <td>{p.name}</td>
                   <td>{p.price.toLocaleString("vi-VN")} ₫</td>
-                  <td>{p.stockQuantity ?? "—"}</td>
+                  <td>{p.effectiveStock ?? p.stockQuantity ?? "—"}</td>
                   <td style={{ fontSize: "var(--font-xs)", color: "var(--text-muted)" }}>
                     {p.categories?.map((c) => c.name).join(", ") || "—"}
                   </td>
@@ -764,13 +863,20 @@ const ProductsTab: React.FC = () => {
               </div>
               <div className="admin-field">
                 <label>Tồn kho</label>
-                <input
-                  type="number"
-                  min="0"
-                  value={form.stockQuantity}
-                  onChange={(e) => setForm((f) => ({ ...f, stockQuantity: e.target.value }))}
-                  placeholder="0"
-                />
+                {variants.length > 0 ? (
+                  <div style={{ padding: "6px 10px", background: "var(--bg)", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-sm)", fontSize: "var(--font-sm)", color: "var(--text)" }}>
+                    <strong>{variants.reduce((sum, v) => sum + v.stockQuantity, 0)}</strong>
+                    <span style={{ color: "var(--text-muted)", fontSize: "var(--font-xs)", marginLeft: 6 }}>tổng từ biến thể</span>
+                  </div>
+                ) : (
+                  <input
+                    type="number"
+                    min="0"
+                    value={form.stockQuantity}
+                    onChange={(e) => setForm((f) => ({ ...f, stockQuantity: e.target.value }))}
+                    placeholder="0"
+                  />
+                )}
               </div>
             </div>
 
@@ -1494,12 +1600,14 @@ const DiscountsTab: React.FC = () => {
 
   const handleSave = async () => {
     setSaving(true);
+    // datetime-local gives "YYYY-MM-DDTHH:mm" (no seconds); Jackson LocalDateTime needs ":00"
+    const toIso = (d: string) => d ? (d.length === 16 ? d + ":00" : d) : undefined;
     try {
       const payload: Partial<DiscountItem> = {
         code: form.code, description: form.description || undefined, discountType: form.discountType,
         discountValue: form.discountValue, minOrderValue: form.minOrderValue,
         maxDiscount: form.maxDiscount || undefined,
-        startDate: form.startDate || undefined, endDate: form.endDate || undefined,
+        startDate: toIso(form.startDate), endDate: toIso(form.endDate),
         usageLimit: form.usageLimit || undefined, active: form.active,
       };
       if (editItem) {
